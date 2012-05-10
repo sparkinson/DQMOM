@@ -1,0 +1,80 @@
+from dolfin import *
+from numpy import *
+
+# some constants
+D_x = [1.0]
+G = 1.0
+T = 10.0
+dt = 0.1
+
+# Create mesh and define function space
+mesh = UnitInterval(10)
+#mesh = UnitSquare(6, 4)
+#mesh = UnitCube(6, 4, 5)
+P1 = FunctionSpace(mesh, 'Lagrange', 1)
+
+# Define initial values function
+wAbscissa0 = Expression('0.5*G*x[0]', {'G':G})
+weight0 = Expression('0.5')
+
+wAbscissa_0_1 = project(wAbscissa0, P1)
+wAbscissa_1_1 = project(wAbscissa0, P1)
+weight_0_1 = project(weight0, P1)
+weight_1_1 = project(weight0, P1)
+
+# Define boundary conditions
+# u0 = Expression('1 + x[0]*x[0] + 2*x[1]*x[1]')
+# def u0_boundary(x, on_boundary):
+#     return on_boundary
+# bc = DirichletBC(V, u0, u0_boundary)
+
+# Define variational problem
+wAbscissa_0 = TrialFunction(P1)
+wAbscissa_1 = TrialFunction(P1)
+weight_0 = TrialFunction(P1)
+weight_1 = TrialFunction(P1)
+wAbscissa_0_v = TestFunction(P1)
+wAbscissa_1_v = TestFunction(P1)
+weight_0_v = TestFunction(P1)
+weight_1_v = TestFunction(P1)
+
+wAbscissa_0_a = wAbscissa_0*wAbscissa_0_v*dx + dt*inner(nabla_grad(wAbscissa_0), D_x*nabla_grad(wAbscissa_0_v))*dx
+wAbscissa_0_L = (wAbscissa_0_1 + dt*f + a_0)*wAbscissa_0_v*dx
+wAbscissa_1_a = wAbscissa_1*wAbscissa_1_v*dx + dt*inner(nabla_grad(wAbscissa_1), D_x*nabla_grad(wAbscissa_1_v))*dx
+wAbscissa_1_L = (wAbscissa_1_1 + dt*f + a_1)*wAbscissa_1_v*dx
+weight_0_a = weight_0*weight_0_v*dx + dt*inner(nabla_grad(weight_0), D_x*nabla_grad(weight_0_v))*dx
+weight_0_L = (weight_0_1 + dt*f + b_0)*weight_0_v*dx
+weight_1_a = weight_1*weight_1_v*dx + dt*inner(nabla_grad(weight_1), D_x*nabla_grad(weight_1_v))*dx
+weight_1_L = (weight_1_1 + dt*f + b_1)*weight_1_v*dx
+
+wAbscissa_0_A = assemble(wAbscissa_0_a)   # assemble only once, before the time stepping
+wAbscissa_1_A = assemble(wAbscissa_1_a) 
+weight_0_A = assemble(weight_0_a) 
+weight_1_A = assemble(weight_1_a) 
+
+wAbscissa_0 = Function(P1)
+wAbscissa_1 = Function(P1)
+weight_0 = Function(P1)
+weight_1 = Function(P1)
+
+t = dt
+wAbscissa_0_b = None
+wAbscissa_1_b = None 
+weight_0_b = None 
+weight_1_b = None 
+# Time step loop
+while t <= T:
+      wAbscissa_0_b = assemble(wAbscissa_0_L, tensor=wAbscissa_0_b) 
+      wAbscissa_1_b = assemble(wAbscissa_1_L, tensor=wAbscissa_1_b) 
+      weight_0_b = assemble(weight_0_L, tensor=weight_0_b) 
+      weight_1_b = assemble(weight_1_L, tensor=weight_1_b)  
+      solve(wAbscissa_0_A, wAbscissa_0, wAbscissa_0_b)
+      solve(wAbscissa_1_A, wAbscissa_1, wAbscissa_1_b)
+      solve(weight_0_A, weight_0, weight_0_b)
+      solve(weight_1_A, weight_1, weight_1_b)
+
+      
+      
+      t += dt
+      
+      
