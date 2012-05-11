@@ -13,16 +13,16 @@ def main():
     n_ele = 20
     N = 2
     A_cond = 1e-11
-    A_pert = 1e-3
+    A_pert = 5e-4
     D_x = 1e-3
     G = 1.0
-    minField = 1e-6
+    minField = 1e-10
     abscissa_0 = [Expression('0.4*floor(x[0]+0.45)' + 
                              '+ 0.9*(1-ceil(x[0]-0.45))' +
-                             '0.0')]#'+ pow(minField,0.5)', minField=minField), 
+                             '+ minField', minField=minField), 
                   Expression('0.6*floor(x[0]+0.45)' + 
                              '+ 1.1*(1-ceil(x[0]-0.45))' +
-                             '0.0')]#'+ pow(minField,0.5)', minField=minField)]
+                             '- minField', minField=minField)]
     weight_0 = [Expression('0.5*floor(x[0]+0.45)' + 
                            '+ 0.5*(1-ceil(x[0]-0.45))' +
                            '+ minField', minField=minField), 

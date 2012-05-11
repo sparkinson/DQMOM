@@ -20,8 +20,7 @@ weight_0 = [Expression('0.5'),Expression('0.5')]
 # Create files for storing solution    
 files_a = [File("results/weight_" + str(i) + ".pvd") for i in range(N)]   
 files_b = [File("results/abscissa_" + str(i) + ".pvd") for i in range(N)]
-files_c = [File("results/density.pvd"),
-           File("results/mean.pvd"),
+files_c = [File("results/mean.pvd"),
            File("results/std_dev.pvd"),
            File("results/t_mean.pvd"),
            File("results/t_std_dev.pvd")]

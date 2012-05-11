@@ -26,7 +26,7 @@ class quad:
       def Print(self):
             print self.weight_1.vector().array(), self.abscissa.vector().array()
 
-def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim):
+def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_pert):
 
       # calculate abscissa's
       g_abscissa = []
@@ -43,10 +43,14 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim):
             if dim == 3:
                   g_abscissa_d = project(grad(q.abscissa), TensorFunctionSpace(mesh, 'Lagrange', degree))
             g_abscissa_d_split = g_abscissa_d.split(deepcopy=True) 
-            g_sum_square = g_abscissa_d_split[0].vector().array()**2
-            for i in range(1, dim):
-                  g_sum_square += g_abscissa_d_split[i].vector().array()**2
+            try:
+                  g_sum_square = g_abscissa_d_split[0].vector().array()**2
+                  for i in range(1, dim):
+                        g_sum_square += g_abscissa_d_split[i].vector().array()**2
+            except:
+                  g_sum_square =  g_abscissa_d.vector().array()**2      
 
+      Sources = [Function(FS) for i in range(2*N)]
       # calculate source terms
       for v in range(mesh.num_vertices()):
             abscissa = []
@@ -58,6 +62,7 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim):
             A, A_3, C = constructMatrices(weights, abscissa, g_sum_square, v, N, D_x)
             counter = 0
             while (1/linalg.cond(A)) < A_cond:
+                  n_pert += 1
                   abscissa = abscissa + (random.random_sample((N,))*2. -1.)*A_pert
                   A, A_3, C = constructMatrices(weights, abscissa, g_sum_square, v, N, D_x)
                   counter += 1
@@ -66,20 +71,24 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim):
                         counter = 0
             
             sources = linalg.solve(A, dot(A_3, C))
+            for i in range(2*N):
+                  Sources[i].vector()[v] = sources[i]
             
             for i, q in enumerate(quads):
-                  q.weight_S = sources[i]
-                  q.weighted_abscissa_S = sources[i+N]
+                  q.weight_S.vector()[v] = sources[i]
+                  q.weighted_abscissa_S.vector()[v] = sources[i+N]
 
       # calculate mean and standard deviation 
       moments = zeros([mesh.num_vertices(),2*N])
       for i in range(2*N):
             for q in quads:
                   moments[:,i] += q.weight_1.vector().array()*q.abscissa.vector().array()**i
+      Density = Function(FS)
       Mean = Function(FS)
       Std = Function(FS)
-      Mean.vector()[:] = array(moments[:,1])
-      var = moments[:,2] - moments[:,1]**2
+      Density.vector()[:] = array(moments[:,0])
+      Mean.vector()[:] = array(moments[:,1]/moments[:,0])
+      var = moments[:,2]/moments[:,0] - (moments[:,1]/moments[:,0])**2
       var[var<0.0] = 0.0
       Std.vector()[:] = array(sqrt(var))
 
@@ -87,10 +96,17 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim):
       for i in range(N):
             files[i] << quads[i].weight_1
             files[i+N] << quads[i].abscissa
+            files[i+2*N] << quads[i].weighted_abscissa_1
+            files[i+3*N] << quads[i].weight_S
+            files[i+4*N] << quads[i].weighted_abscissa_S
+      files[-3] << Density
       files[-2] << Mean
       files[-1] << Std  
 
+      return quads, n_pert
+
 def constructMatrices(weights, abscissa, g_sum_square, v, N, D_x):
+      
       A = zeros([2*N,2*N])
       A_3 = zeros([2*N,N])
       C = zeros([N])
@@ -101,9 +117,13 @@ def constructMatrices(weights, abscissa, g_sum_square, v, N, D_x):
                   A_3[i,j] = i*(i-1)*abscissa[j]**(i-2)
                   C[j] = (weights[j]*D_x.vector().array()[v]*
                           g_sum_square[v])
+      
       return A, A_3, C    
 
-def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, weighted_abscissa_0, weight_0, files):
+def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, files):
+      
+      # Counter for number of perturbations
+      n_pert = 0
 
       # Create mesh and define function space
       if dim == 1:
@@ -120,12 +140,14 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, weighted_abscissa_0, weight_
       quads = []
       for i in range(N):
             quads.append(quad(FS))
-            quads[i].weighted_abscissa_1 = project(weighted_abscissa_0[i], FS) 
+            quads[i].weighted_abscissa_1 = project(abscissa_0[i], FS) 
             quads[i].weight_1 = project(weight_0[i], FS)
+            quads[i].weighted_abscissa_1.vector()[:] = (quads[i].weight_1.vector().array()*
+                                                        quads[i].weighted_abscissa_1.vector().array())
 
       # Calculate diagnostics
       t = 0.0
-      calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim)
+      quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_pert)
 
       # Define variational problem
       for q in quads:
@@ -159,8 +181,10 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, weighted_abscissa_0, weight_
             print 'start diagnostics'
 
             # Calculate diagnostics and increase time step
-            calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim)
+            quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_pert)
 
             print 'end diagnostics'
 
             t += dt
+
+      print 'number of ill-conditioned matrices = ', n_pert
