@@ -21,11 +21,11 @@ def main():
                              '+ 1.0*(1-ceil(x[0]-0.45))'),
                   Expression('1.0*floor(x[0]+0.45)' + 
                              '+ 0.8*(1-ceil(x[0]-0.45))')]
-    weight_0 = [Expression('0.5*floor(x[0]+0.45)' + 
-                           '+ 0.5*(1-ceil(x[0]-0.45))' +
+    weight_0 = [Expression('0.45*floor(x[0]+0.45)' + 
+                           '+ 0.45*(1-ceil(x[0]-0.45))' +
                            '+ minField', minField=minField), 
-                Expression('0.5*floor(x[0]+0.45)' + 
-                           '+ 0.5*(1-ceil(x[0]-0.45))' +
+                Expression('0.55*floor(x[0]+0.45)' + 
+                           '+ 0.55*(1-ceil(x[0]-0.45))' +
                            '+ minField', minField=minField)]
 
     # Create files for storing solution    
@@ -34,7 +34,10 @@ def main():
     files_c = [File("results_4/weighted_abscissa_" + str(i) + ".pvd") for i in range(N)]
     files_d = [File("results_4/weight_S_" + str(i) + ".pvd") for i in range(N)]
     files_e = [File("results_4/weighted_abscissa_S_" + str(i) + ".pvd") for i in range(N)]
-    files_f = [File("results_4/density.pvd"),File("results_4/mean.pvd"),File("results_4/std_dev.pvd")]
+    files_f = [File("results_4/density.pvd"),
+               File("results_4/mean.pvd"),
+               File("results_4/std_dev.pvd"),
+               File("results_4/skew.pvd")]
     files = files_a + files_b + files_c + files_d + files_e + files_f
 
     # import pdb; pdb.set_trace()

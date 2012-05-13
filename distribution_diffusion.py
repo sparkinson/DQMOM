@@ -34,7 +34,7 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
             q.abscissa.vector()[:] = (q.weighted_abscissa_1.vector().array()/q.weight_1.vector().array())
 
       # calculate sum of gradients squared using FE approximation of gradient at vertices
-      g_abscissa = []
+      g_sum_square = []
       for i, q in enumerate(quads):
             if dim == 1:
                   g_abscissa_d = project(grad(q.abscissa), FunctionSpace(mesh, 'Lagrange', degree))
@@ -44,11 +44,13 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
                   g_abscissa_d = project(grad(q.abscissa), TensorFunctionSpace(mesh, 'Lagrange', degree))
             g_abscissa_d_split = g_abscissa_d.split(deepcopy=True) 
             try:
-                  g_sum_square = g_abscissa_d_split[0].vector().array()**2
+                  g_sum_square.append(g_abscissa_d_split[0].vector().array()**2)
                   for i in range(1, dim):
-                        g_sum_square += g_abscissa_d_split[i].vector().array()**2
+                        g_sum_square[-1] += g_abscissa_d_split[i].vector().array()**2
             except:
-                  g_sum_square =  g_abscissa_d.vector().array()**2      
+                  g_sum_square.append(g_abscissa_d.vector().array()**2)   
+            
+      print 'solving linear system'   
 
       Sources = [Function(FS) for i in range(2*N)]
       # calculate source terms
@@ -71,12 +73,12 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
                         counter = 0
             
             sources = linalg.solve(A, dot(A_3, C))
-            for i in range(2*N):
-                  Sources[i].vector()[v] = sources[i]
             
             for i, q in enumerate(quads):
                   q.weight_S.vector()[v] = sources[i]
                   q.weighted_abscissa_S.vector()[v] = sources[i+N]
+            
+      print 'finished solving linear system'   
 
       # calculate mean and standard deviation 
       moments = zeros([mesh.num_vertices(),2*N])
@@ -86,11 +88,15 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
       Density = Function(FS)
       Mean = Function(FS)
       Std = Function(FS)
-      Density.vector()[:] = array(moments[:,0])
-      Mean.vector()[:] = array(moments[:,1]/moments[:,0])
+      Skew = Function(FS)
+      d = Density.vector()[:] = array(moments[:,0])
+      mu = Mean.vector()[:] = array(moments[:,1]/moments[:,0])
       var = moments[:,2]/moments[:,0] - (moments[:,1]/moments[:,0])**2
       var[var<0.0] = 0.0
-      Std.vector()[:] = array(sqrt(var))
+      std = Std.vector()[:] = array(sqrt(var))
+      Skew.vector()[:] = (moments[:,3]/moments[:,0] - 
+              3.*mu*std**2 - 
+              mu**3.) / std**3
 
       # Save to file
       for i in range(N):
@@ -99,9 +105,10 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
             files[i+2*N] << quads[i].weighted_abscissa_1
             files[i+3*N] << quads[i].weight_S
             files[i+4*N] << quads[i].weighted_abscissa_S
-      files[-3] << Density
-      files[-2] << Mean
-      files[-1] << Std  
+      files[-4] << Density
+      files[-3] << Mean
+      files[-2] << Std  
+      files[-1] << Skew 
 
       return quads, n_pert
 
@@ -116,11 +123,23 @@ def constructMatrices(weights, abscissa, g_sum_square, v, N, D_x):
                   A[i,j+N] = i*abscissa[j]**(i-1)
                   A_3[i,j] = i*(i-1)*abscissa[j]**(i-2)
                   C[j] = (weights[j]*D_x.vector().array()[v]*
-                          g_sum_square[v])
+                          g_sum_square[j][v])
       
       return A, A_3, C    
 
-def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, files):
+def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0):
+
+      # Create files for storing solution    
+      files_a = [File("results_6/weight_" + str(i) + ".pvd") for i in range(N)]   
+      files_b = [File("results_6/abscissa_" + str(i) + ".pvd") for i in range(N)]
+      files_c = [File("results_6/weighted_abscissa_" + str(i) + ".pvd") for i in range(N)]
+      files_d = [File("results_6/weight_S_" + str(i) + ".pvd") for i in range(N)]
+      files_e = [File("results_6/weighted_abscissa_S_" + str(i) + ".pvd") for i in range(N)]
+      files_f = [File("results_6/density.pvd"),
+                 File("results_6/mean.pvd"),
+                 File("results_6/std_dev.pvd"),
+                 File("results_6/skew.pvd")]
+      files = files_a + files_b + files_c + files_d + files_e + files_f
       
       # Counter for number of perturbations
       n_pert = 0
