@@ -9,17 +9,17 @@ def main():
     # some constants
     T = 5.0
     dt = 0.1
-    dim = 1
-    n_ele = 3
+    dim = 2
+    n_ele = 21
     N = 2
     A_cond = 1e-11
-    A_pert = 5e-4
-    D_x = 1e-2
-    minField = 1e-10
-    abscissa_0 = [Expression('0.6*floor(x[0]+0.5) + 0.4*(1.0-floor(x[0]+0.5))'),
-                  Expression('0.4*floor(x[0]+0.5) + 0.2*(1.0-floor(x[0]+0.5))')]
-    weight_0 = [Expression('0.25*floor(x[0]+0.5) + 0.25*(1.0-floor(x[0]+0.5))'), 
-                Expression('0.25*floor(x[0]+0.5) + 0.25*(1.0-floor(x[0]+0.5))')]
+    A_pert = 5e-3
+    D_x = 1e-3
+    minField = 0.5
+    abscissa_0 = [Expression('1.0+(floor(x[0]+0.5)+floor(x[1]+0.5))*1.0'),
+                  Expression('0.5+(floor(x[0]+0.5)+floor(x[1]+0.5))*0.5')]
+    weight_0 = [Expression('minField+1.0*(floor(x[0]+0.5)+floor(x[1]+0.5))', minField=minField), 
+                Expression('minField+1.0*(floor(x[0]+0.5)+floor(x[1]+0.5))', minField=minField)]
 
     # import pdb; pdb.set_trace()
 

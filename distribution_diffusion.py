@@ -56,7 +56,7 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
                        
                   # perturbate abscissa to generate well-conditioned matrix
                   counter = 0
-                  while (1/linalg.cond(A)) < A_cond:
+                  while (1/linalg.cond(A[:,:,v])) < A_cond:
 
                         counter += 1
                         if counter > 10:
@@ -90,9 +90,10 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
       var = moments[:,2]/moments[:,0] - (moments[:,1]/moments[:,0])**2
       var[var<0.0] = 0.0
       std = Std.vector()[:] = array(sqrt(var))
-      Skew.vector()[:] = (moments[:,3]/moments[:,0] - 
-                          3.*mu*std**2 - 
-                          mu**3.) / std**3
+      Skew.vector()[std>0.0] = (moments[:,3][std>0.0]/moments[:,0][std>0.0] - 
+                                3.*mu[std>0.0]*std[std>0.0]**2 - 
+                                mu[std>0.0]**3.) / std[std>0.0]**3
+      Skew.vector()[std==0.0] = 0.0      
             
       print 'writing to file'   
 
@@ -158,6 +159,7 @@ def constructMatrices(quads, g_sum_square, D_x):
 
 def reconstructMatrix(abscissa):
       N = len(abscissa)
+      A = zeros([2*N,2*N])
 
       for i in range(2*N):
             for j in range(N):
@@ -210,13 +212,16 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_f
       # Define variational problem
       for q in quads:
             q.weighted_abscissa_a = (q.weighted_abscissa*q.weighted_abscissa_tf*dx + 
-                                     dt*inner(nabla_grad(q.weighted_abscissa), nabla_grad(D_x*q.weighted_abscissa_tf))*dx)
-            q.weighted_abscissa_L = (q.weighted_abscissa_1 + dt*q.weighted_abscissa_S)*q.weighted_abscissa_tf*dx
+                                     dt*inner(nabla_grad(q.weighted_abscissa), 
+                                              nabla_grad(D_x*q.weighted_abscissa_tf))*dx)
+            q.weighted_abscissa_L = ((q.weighted_abscissa_1 + dt*q.weighted_abscissa_S)*
+                                     q.weighted_abscissa_tf*dx)
             q.weight_a = (q.weight*q.weight_tf*dx + 
-                          dt*inner(nabla_grad(q.weight), nabla_grad(D_x*q.weight_tf))*dx)
+                          dt*inner(nabla_grad(q.weight), 
+                                   nabla_grad(D_x*q.weight_tf))*dx)
             q.weight_L = (q.weight_1 + dt*q.weight_S)*q.weight_tf*dx
-            q.weighted_abscissa_A = assemble(q.weighted_abscissa_a) # assemble only once, before the time stepping
-            q.weight_A = assemble(q.weight_a)
+            q.weighted_abscissa_A = assemble(q.weighted_abscissa_a) # assemble once before loop
+            q.weight_A = assemble(q.weight_a) # assemble once before loop
             q.weighted_abscissa = Function(FS)
             q.weight = Function(FS)
 
