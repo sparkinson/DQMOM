@@ -26,59 +26,55 @@ class quad:
       def Print(self):
             print self.weight_1.vector().array(), self.abscissa.vector().array()
 
-def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_pert):
+def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert):
 
       # calculate abscissa's
-      g_abscissa = []
       for i, q in enumerate(quads):
-            q.abscissa.vector()[:] = (q.weighted_abscissa_1.vector().array()/q.weight_1.vector().array())
+            q.abscissa.vector()[:] = (q.weighted_abscissa_1.vector().array()/
+                                      q.weight_1.vector().array())  
 
-      # calculate sum of gradients squared using FE approximation of gradient at vertices
-      g_sum_square = []
-      for i, q in enumerate(quads):
-            if dim == 1:
-                  g_abscissa_d = project(grad(q.abscissa), FunctionSpace(mesh, 'Lagrange', degree))
-            if dim == 2:
-                  g_abscissa_d = project(grad(q.abscissa), VectorFunctionSpace(mesh, 'Lagrange', degree))
-            if dim == 3:
-                  g_abscissa_d = project(grad(q.abscissa), TensorFunctionSpace(mesh, 'Lagrange', degree))
-            g_abscissa_d_split = g_abscissa_d.split(deepcopy=True) 
-            try:
-                  g_sum_square.append(g_abscissa_d_split[0].vector().array()**2)
-                  for i in range(1, dim):
-                        g_sum_square[-1] += g_abscissa_d_split[i].vector().array()**2
-            except:
-                  g_sum_square.append(g_abscissa_d.vector().array()**2)   
+      print 'constructing linear system'
             
+      # get gradient squared sum
+      g_sum_square = getGradientSumSquare(quads, mesh)
+
+      # construct linear system matrices
+      A, A_3, C = constructMatrices(quads, g_sum_square, D_x)
+
       print 'solving linear system'   
 
-      Sources = [Function(FS) for i in range(2*N)]
       # calculate source terms
       for v in range(mesh.num_vertices()):
-            abscissa = []
-            weights = []
-            for j in range(N):
-                  abscissa.append(quads[j].abscissa.vector().array()[v])
-                  weights.append(quads[j].weight_1.vector().array()[v])
-                        
-            A, A_3, C = constructMatrices(weights, abscissa, g_sum_square, v, N, D_x)
-            counter = 0
-            while (1/linalg.cond(A)) < A_cond:
-                  n_pert += 1
-                  abscissa = abscissa + (random.random_sample((N,))*2. -1.)*A_pert
-                  A, A_3, C = constructMatrices(weights, abscissa, g_sum_square, v, N, D_x)
-                  counter += 1
-                  if counter > 10:
-                        print 'Struggling to find well conditioned matrix' 
-                        counter = 0
+
+            # check for ill-conditioned matrix
+            if (1/linalg.cond(A[:,:,v])) < A_cond:
+                  print 'ill conditioned matrix found' 
+
+                  abscissa = []
+                  for j in range(N):
+                        abscissa.append(quads[j].abscissa.vector().array()[v])
+                       
+                  # perturbate abscissa to generate well-conditioned matrix
+                  counter = 0
+                  while (1/linalg.cond(A)) < A_cond:
+
+                        counter += 1
+                        if counter > 10:
+                              print '...struggling to find well conditioned matrix' 
+                              counter = 0
+
+                        abscissa = abscissa + (random.random_sample((N,))*2. -1.)*A_pert
+                        A[:,:,v] = reconstructMatrix(abscissa)
+                        n_pert += 1
             
-            sources = linalg.solve(A, dot(A_3, C))
+            # solve linear system
+            sources = linalg.solve(A[:,:,v], dot(A_3[:,:,v], C[:,v]))
             
             for i, q in enumerate(quads):
                   q.weight_S.vector()[v] = sources[i]
                   q.weighted_abscissa_S.vector()[v] = sources[i+N]
             
-      print 'finished solving linear system'   
+      print 'calculating statistics'   
 
       # calculate mean and standard deviation 
       moments = zeros([mesh.num_vertices(),2*N])
@@ -95,8 +91,10 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
       var[var<0.0] = 0.0
       std = Std.vector()[:] = array(sqrt(var))
       Skew.vector()[:] = (moments[:,3]/moments[:,0] - 
-              3.*mu*std**2 - 
-              mu**3.) / std**3
+                          3.*mu*std**2 - 
+                          mu**3.) / std**3
+            
+      print 'writing to file'   
 
       # Save to file
       for i in range(N):
@@ -112,33 +110,74 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_
 
       return quads, n_pert
 
-def constructMatrices(weights, abscissa, g_sum_square, v, N, D_x):
+def getGradientSumSquare(quads, mesh):
+      dim = mesh.geometry().dim()
+
+      # calculate sum of gradients squared using FE approximation of gradient at vertices
+      g_sum_square = []
+      for q in quads:
+            if dim == 1:
+                  g_abscissa_d = project(grad(q.abscissa), 
+                                         FunctionSpace(mesh, 'Lagrange', degree))
+            if dim == 2:
+                  g_abscissa_d = project(grad(q.abscissa), 
+                                         VectorFunctionSpace(mesh, 'Lagrange', degree))
+            if dim == 3:
+                  g_abscissa_d = project(grad(q.abscissa), 
+                                         TensorFunctionSpace(mesh, 'Lagrange', degree))
+            g_abscissa_d_split = g_abscissa_d.split(deepcopy=True) 
+            try:
+                  g_sum_square.append(g_abscissa_d_split[0].vector().array()**2)
+                  for i in range(1, dim):
+                        g_sum_square[-1] += g_abscissa_d_split[i].vector().array()**2
+            except:
+                  g_sum_square.append(g_abscissa_d.vector().array()**2) 
+
+      return g_sum_square
+
+def constructMatrices(quads, g_sum_square, D_x):
+      N = len(quads)
+      n = len(quads[0].abscissa.vector().array())
       
-      A = zeros([2*N,2*N])
-      A_3 = zeros([2*N,N])
-      C = zeros([N])
+      # construct A matrices
+      A_1 = zeros([2*N,N,n]) 
+      A_2 = zeros([2*N,N,n]) 
+      A_3 = zeros([2*N,N,n])
+      for i in range(2*N):
+            for j in range(N):
+                  A_1[i,j] = (1-i)*quads[j].abscissa.vector().array()**(i)
+                  A_2[i,j] = i*quads[j].abscissa.vector().array()**(i-1)
+                  A_3[i,j] = i*(i-1)*quads[j].abscissa.vector().array()**(i-2)
+
+      # construct matrix C
+      C = zeros([N,n])
+      for j in range(N):
+            C[j] = quads[j].weight_1.vector().array()*D_x.vector().array()*g_sum_square[j]
+      
+      return append(A_1, A_2, 1), A_3, C
+
+def reconstructMatrix(abscissa):
+      N = len(abscissa)
+
       for i in range(2*N):
             for j in range(N):
                   A[i,j] = (1-i)*abscissa[j]**(i)
                   A[i,j+N] = i*abscissa[j]**(i-1)
-                  A_3[i,j] = i*(i-1)*abscissa[j]**(i-2)
-                  C[j] = (weights[j]*D_x.vector().array()[v]*
-                          g_sum_square[j][v])
       
-      return A, A_3, C    
+      return A 
 
-def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0):
+def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_folder):
 
       # Create files for storing solution    
-      files_a = [File("results_6/weight_" + str(i) + ".pvd") for i in range(N)]   
-      files_b = [File("results_6/abscissa_" + str(i) + ".pvd") for i in range(N)]
-      files_c = [File("results_6/weighted_abscissa_" + str(i) + ".pvd") for i in range(N)]
-      files_d = [File("results_6/weight_S_" + str(i) + ".pvd") for i in range(N)]
-      files_e = [File("results_6/weighted_abscissa_S_" + str(i) + ".pvd") for i in range(N)]
-      files_f = [File("results_6/density.pvd"),
-                 File("results_6/mean.pvd"),
-                 File("results_6/std_dev.pvd"),
-                 File("results_6/skew.pvd")]
+      files_a = [File(save_folder + "/weight_" + str(i) + ".pvd") for i in range(N)]   
+      files_b = [File(save_folder + "/abscissa_" + str(i) + ".pvd") for i in range(N)]
+      files_c = [File(save_folder + "/weighted_abscissa_" + str(i) + ".pvd") for i in range(N)]
+      files_d = [File(save_folder + "/weight_S_" + str(i) + ".pvd") for i in range(N)]
+      files_e = [File(save_folder + "/weighted_abscissa_S_" + str(i) + ".pvd") for i in range(N)]
+      files_f = [File(save_folder + "/density.pvd"),
+                 File(save_folder + "/mean.pvd"),
+                 File(save_folder + "/std_dev.pvd"),
+                 File(save_folder + "/skew.pvd")]
       files = files_a + files_b + files_c + files_d + files_e + files_f
       
       # Counter for number of perturbations
@@ -166,7 +205,7 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0):
 
       # Calculate diagnostics
       t = 0.0
-      quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_pert)
+      quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
 
       # Define variational problem
       for q in quads:
@@ -184,7 +223,7 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0):
       t = dt
       # Time step loop
       while t <= T:
-            print t
+            print 't = ', t
             print 'start solve'
 
             for q in quads:
@@ -195,14 +234,8 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0):
                   q.weighted_abscissa_1.assign(q.weighted_abscissa)
                   q.weight_1.assign(q.weight)
 
-            print 'end solve'
-            
-            print 'start diagnostics'
-
             # Calculate diagnostics and increase time step
-            quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, dim, n_pert)
-
-            print 'end diagnostics'
+            quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
 
             t += dt
 

@@ -9,8 +9,8 @@ def main():
     # some constants
     T = 5.0
     dt = 0.1
-    dim = 2
-    n_ele = 41
+    dim = 1
+    n_ele = 3
     N = 2
     A_cond = 1e-11
     A_pert = 5e-4
@@ -23,6 +23,6 @@ def main():
 
     # import pdb; pdb.set_trace()
 
-    mod.main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, 'results_6_new')
+    mod.main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, 'results_9')
 
 main()
