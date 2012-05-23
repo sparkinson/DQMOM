@@ -10,7 +10,7 @@ def main():
     T = 5.0
     dt = 0.1
     dim = 2
-    n_ele = 21
+    n_ele = 11
     N = 2
     A_cond = 1e-11
     A_pert = 5e-3

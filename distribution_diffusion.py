@@ -26,7 +26,7 @@ class quad:
       def Print(self):
             print self.weight_1.vector().array(), self.abscissa.vector().array()
 
-def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert):
+def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_illMatrices, icm_method):
 
       # calculate abscissa's
       for i, q in enumerate(quads):
@@ -49,27 +49,32 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
             # check for ill-conditioned matrix
             if (1/linalg.cond(A[:,:,v])) < A_cond:
                   print 'ill conditioned matrix found' 
+                  n_illMatrices += 1
 
-                  abscissa = []
-                  for j in range(N):
-                        abscissa.append(quads[j].abscissa.vector().array()[v])
-                       
-                  # perturbate abscissa to generate well-conditioned matrix
-                  counter = 0
-                  while (1/linalg.cond(A[:,:,v])) < A_cond:
+                  if icm_method == 'perturbate':
+                        abscissa = []
+                        for j in range(N):
+                              abscissa.append(quads[j].abscissa.vector().array()[v])
+                              
+                        # perturbate abscissa to generate well-conditioned matrix
+                        counter = 0
+                        while (1/linalg.cond(A[:,:,v])) < A_cond:
+                              counter += 1
+                              if counter > 10:
+                                    print '...struggling to find well conditioned matrix' 
+                                    counter = 0
 
-                        counter += 1
-                        if counter > 10:
-                              print '...struggling to find well conditioned matrix' 
-                              counter = 0
+                              abscissa = abscissa + (random.random_sample((N,))*2. -1.)*A_pert
+                              A[:,:,v] = reconstructMatrix(abscissa)
 
-                        abscissa = abscissa + (random.random_sample((N,))*2. -1.)*A_pert
-                        A[:,:,v] = reconstructMatrix(abscissa)
-                        n_pert += 1
+                  elif icm_method == 'zero':
+                        A[:,:,v] = eye(2*N,2*N)
+                        A_3[:,:,v] = 1.0
+                        C[:,v] = 0.0
             
             # solve linear system
             sources = linalg.solve(A[:,:,v], dot(A_3[:,:,v], C[:,v]))
-            
+
             for i, q in enumerate(quads):
                   q.weight_S.vector()[v] = sources[i]
                   q.weighted_abscissa_S.vector()[v] = sources[i+N]
@@ -109,7 +114,7 @@ def calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
       files[-2] << Std  
       files[-1] << Skew 
 
-      return quads, n_pert
+      return quads, n_illMatrices
 
 def getGradientSumSquare(quads, mesh):
       dim = mesh.geometry().dim()
@@ -168,7 +173,7 @@ def reconstructMatrix(abscissa):
       
       return A 
 
-def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_folder):
+def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_folder, icm_method):
 
       # Create files for storing solution    
       files_a = [File(save_folder + "/weight_" + str(i) + ".pvd") for i in range(N)]   
@@ -183,7 +188,7 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_f
       files = files_a + files_b + files_c + files_d + files_e + files_f
       
       # Counter for number of perturbations
-      n_pert = 0
+      n_illMatrices = 0
 
       # Create mesh and define function space
       if dim == 1:
@@ -207,7 +212,8 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_f
 
       # Calculate diagnostics
       t = 0.0
-      quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
+      quads, n_illMatrices = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, 
+                                                  n_illMatrices, icm_method)
 
       # Define variational problem
       for q in quads:
@@ -240,8 +246,9 @@ def main(T, dt, dim, n_ele, N, A_cond, A_pert, D_x, abscissa_0, weight_0, save_f
                   q.weight_1.assign(q.weight)
 
             # Calculate diagnostics and increase time step
-            quads, n_pert = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, n_pert)
+            quads, n_illMatrices = calculateDiagnostics(quads, N, A_cond, A_pert, files, FS, mesh, D_x, 
+                                                 n_illMatrices, icm_method)
 
             t += dt
 
-      print 'number of ill-conditioned matrices = ', n_pert
+      print 'number of ill-conditioned matrices = ', n_illMatrices
